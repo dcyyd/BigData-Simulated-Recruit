@@ -95,6 +95,7 @@ BigData-Simulated-Recruit/
 ├── requirements.txt      # Dependencies
 ├── .gitignore            # Git ignore rules
 ├── setup.py              # Project configuration
+├── LICENSE               # License file
 ├── README.md             # Documentation (Chinese)
 └── README_en.md          # Documentation (English)
 ```
