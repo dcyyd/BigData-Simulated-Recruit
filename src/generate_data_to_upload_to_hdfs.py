@@ -17,22 +17,28 @@ def main():
     """
     主执行函数
     """
-    # 修改为 http:// 格式的地址
     hdfs_client = InsecureClient('http://master:9870', user='root')
-    _clear_hdfs_directories(hdfs_client)
-    _create_hdfs_directories(hdfs_client)
+    initialize_hdfs_directories(hdfs_client)
 
     total_files = 30
+    batch_size = 1000  # 定义 batch_size 变量
     for file_index in range(1, total_files + 1):
-        global dataset
-        dataset = _generate_batch(1000)
-        _print_progress(file_index, total_files)
-        _upload_to_hdfs(file_index, hdfs_client, dataset)
+        dataset = generate_batch_data(batch_size)
+        print_progress(file_index, total_files, batch_size)  # 传递 batch_size 参数
+        upload_data_to_hdfs(file_index, hdfs_client, dataset)
 
     print("数据已成功上传到 HDFS...")
 
 
-def _clear_hdfs_directories(hdfs_client):
+def initialize_hdfs_directories(hdfs_client):
+    """
+    初始化 HDFS 目录，包括清空和创建目录
+    """
+    clear_hdfs_directories(hdfs_client)
+    create_hdfs_directories(hdfs_client)
+
+
+def clear_hdfs_directories(hdfs_client):
     """
     清空 HDFS 根目录和指定文件夹
     """
@@ -46,7 +52,7 @@ def _clear_hdfs_directories(hdfs_client):
             print(f"清空 HDFS 目录 {directory} 失败: {str(e)}")
 
 
-def _create_hdfs_directories(hdfs_client):
+def create_hdfs_directories(hdfs_client):
     """
     在 HDFS 上创建存储目录
     """
@@ -59,7 +65,7 @@ def _create_hdfs_directories(hdfs_client):
             print(f"在 HDFS 上创建目录 {d} 失败: {str(e)}")
 
 
-def _generate_batch(batch_size: int) -> List[dict]:
+def generate_batch_data(batch_size: int) -> List[dict]:
     """
     生成批量数据
     :param batch_size: 批量数据的数量
@@ -68,27 +74,47 @@ def _generate_batch(batch_size: int) -> List[dict]:
     return [generate_job_record() for _ in range(batch_size)]
 
 
-def _print_progress(current: int, total: int):
+def print_progress(current: int, total: int, batch_size: int):
     """
     带颜色的进度显示
     :param current: 当前进度
     :param total: 总进度
+    :param batch_size: 每个文件包含的职位信息数量
     """
     progress = current / total * 100
     bar = f"[{'#' * int(progress // 3.33)}{' ' * (30 - int(progress // 3.33))}]"
     print(f"\r生成进度: {bar} {progress:.1f}%", end="")
     if current == total:
         print(f"\n模拟数据生成完毕...\n"
-              f"共生成{total}个文件，每个文件有{len(dataset)}个职位信息...\n"
-              f"请检查 HDFS 目录 /JobData 和 /JobData-Json")
+              f"共生成{total}个文件，每个文件有{batch_size}个职位信息...\n"
+              f"请检查 HDFS 目录 /JobData")
 
 
-def _upload_to_hdfs(file_index: int, hdfs_client, dataset):
+def upload_data_to_hdfs(file_index: int, hdfs_client, dataset):
     """
     将生成的数据文件上传到 HDFS
     :param file_index: 文件索引
     :param hdfs_client: HDFS 客户端
     :param dataset: 数据集
+    """
+    validated_data = validate_and_fix_data(dataset)
+
+    # 保存为JSON Lines格式
+    hdfs_path = f"/JobData/{datetime.now().strftime('%Y%m%d')}/page{file_index}.json"
+    try:
+        with hdfs_client.write(hdfs_path, encoding='utf-8') as writer:
+            for record in validated_data:
+                json_line = json.dumps(record, ensure_ascii=False, separators=(',', ':'))
+                writer.write(json_line + ',')  # 添加逗号分隔符
+    except Exception as e:
+        print(f"\t上传 {hdfs_path} 到 HDFS 失败: {str(e)}")
+
+
+def validate_and_fix_data(dataset: List[dict]) -> List[dict]:
+    """
+    验证并修复数据
+    :param dataset: 原始数据集
+    :return: 验证和修复后的数据集
     """
     validated_data = []
     for record in dataset:
@@ -98,18 +124,10 @@ def _upload_to_hdfs(file_index: int, hdfs_client, dataset):
 
         # 自动修复薪资格式
         if "-" not in record["salary"]:
-            record["salary"] = "20k-30k"
+            record["salary"] = "10k-25k"  # 默认值
         validated_data.append(record)
 
-    # 保存无扩展名版本
-    hdfs_path_no_ext = f"/JobData/{datetime.now().strftime('%Y%m%d')}/page{file_index}"
-    try:
-        with hdfs_client.write(hdfs_path_no_ext, encoding='utf-8') as writer:
-            json.dump(dataset, writer, ensure_ascii=False, indent=2)
-        print(f"\t已成功上传 {hdfs_path_no_ext} 到 HDFS...")
-    except Exception as e:
-        print(f"\t上传 {hdfs_path_no_ext} 到 HDFS 失败: {str(e)}")
-        print("请检查 HDFS 服务配置和网络连接...")
+    return validated_data
 
 
 if __name__ == "__main__":
